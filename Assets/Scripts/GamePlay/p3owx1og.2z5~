@@ -1,0 +1,83 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public enum ETileValues
+{
+    NUMBER2 = 2,
+    NUMBER4 = 4,
+    NUMBER8 = 8,
+    NUMBER16 = 16,
+    INVALID = 0,
+}
+public class BoardManager : IService
+{
+    private BoardTile[,] m_board;
+    private GameObject m_boardBack;
+    private BoardPreset m_boardPreset;
+    private Dictionary<int, BoardTilePreset> m_boardTilePresets;
+    public BoardManagerStateMachine FSM { get => machine; }
+
+    private BoardManagerStateMachine machine;
+
+    public BoardManager(BoardPreset boardPreset) 
+    {
+        m_boardPreset = boardPreset;
+
+        int width = m_boardPreset.width;
+        int height = m_boardPreset.height;
+
+        m_board = new BoardTile[width, height];
+        m_boardTilePresets = new Dictionary<int, BoardTilePreset>();
+
+        foreach (var bt in m_boardPreset.boardTilePresets) 
+        {
+            m_boardTilePresets.Add(bt.tileValue, bt);
+        }
+    }
+
+    void IService.Start()
+    {
+        machine = new BoardManagerStateMachine(this);
+        this.machine.OnBegin();
+    }
+
+    public void End()
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void DrawBoard()
+    {
+        m_boardBack = GameObject.Instantiate(m_boardPreset.boardBackgroundObj);
+        var boardObject = m_boardBack.transform.GetChild(0);
+        RectTransform b = boardObject.GetComponent<RectTransform>();
+
+        var min = b.sizeDelta / 2.0f;
+        
+        for (int r = 0; r < m_boardPreset.width; r++)
+        {
+            for (int c = 0; c < m_boardPreset.height; c++)
+            {
+                var tile = GameObject.Instantiate(m_boardPreset.boardTileObj, boardObject.transform);
+                
+                var bt = tile.GetComponent<BoardTile>();
+                bt.SetTile(m_boardTilePresets[(int)ETileValues.NUMBER16]);
+                
+                var size = bt.GetSizeX();
+                
+                tile.transform.localPosition = new Vector3(min.x - size/2.0f - c * size, min.y - size/2.0f -  r * size, 1);
+                tile.transform.localScale = Vector3.one;
+
+                m_board[r, c] = bt;
+            }
+        }
+
+        //random spawn
+        
+        int row = m_boardPreset.height - 1;
+        int col = Random.Range(0, m_boardPreset.width);
+
+        m_board[0, 0].SetTile(m_boardTilePresets[(int)ETileValues.NUMBER2]);
+    }
+}

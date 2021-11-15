@@ -1,0 +1,264 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using System.Linq;
+
+public enum ETileValues
+{
+    NUMBER2 = 2,
+    NUMBER4 = 4,
+    NUMBER8 = 8,
+    NUMBER16 = 16,
+    INVALID = 0,
+}
+public class BoardManager : IService
+{
+    private BoardTile[,] m_board;
+    private GameObject m_boardBack;
+    private BoardPreset m_boardPreset;
+    private Dictionary<int, BoardTilePreset> m_boardTilePresets;
+    public BoardManagerStateMachine FSM { get => m_machine; }
+
+    private BoardManagerStateMachine m_machine;
+
+    public BoardManager(BoardPreset boardPreset) 
+    {
+        m_boardPreset = boardPreset;
+
+        int width = m_boardPreset.width;
+        int height = m_boardPreset.height;
+
+        m_board = new BoardTile[width, height];
+        m_boardTilePresets = new Dictionary<int, BoardTilePreset>();
+
+        foreach (var bt in m_boardPreset.boardTilePresets) 
+        {
+            m_boardTilePresets.Add(bt.tileValue, bt);
+        }
+    }
+
+    void IService.Start()
+    {
+        m_machine = new BoardManagerStateMachine(this);
+        this.m_machine.OnBegin();
+    }
+
+    public void End()
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void Update() 
+    {
+        m_machine.OnUpdate();
+    }
+
+    public void Slide(bool row, int direction) 
+    {
+        if (row)
+            SlideRows(direction);
+        else
+            SlideCols(direction);
+    }
+    private void SlideRows(int direction)
+    {
+        int i = 0;
+
+        for (; i < m_board.GetLength(0); i++) 
+        {
+            var row = CustomBoardArray<BoardTile>.GetRow(m_board, i);
+
+            var numbers = row.Where(x => x.Value > 0).ToList();
+
+            var zeros = row.Where(x => x.Value == 0).ToList();
+            
+            List<int> values;
+            
+            if (direction > 0)
+            {
+                numbers.AddRange(zeros);
+                values = numbers.Select((i, v) => new { v, i }).Select(t => t.i.Value).ToList();
+            }
+            else 
+            {
+                zeros.AddRange(numbers);
+                values = zeros.Select((i, v) => new { v, i }).Select(t => t.i.Value).ToList();
+            }
+
+            for (int k = 0; k < m_board.GetLength(0); k++)
+                m_board[i, k].SetTile(m_boardTilePresets[values[k]]);
+        }
+    }
+
+    private void SlideCols(int direction)
+    {
+        int i = 0;
+
+        for (; i < m_board.GetLength(0); i++)
+        {
+            var col = CustomBoardArray<BoardTile>.GetColumn(m_board, i);
+
+            var numbers = col.Where(x => x.Value > 0).ToList();
+
+            var zeros = col.Where(x => x.Value == 0).ToList();
+
+            List<int> values;
+
+            if (direction > 0)
+            {
+                numbers.AddRange(zeros);
+                values = numbers.Select((i, v) => new { v, i }).Select(t => t.i.Value).ToList();
+            }
+            else
+            {
+                zeros.AddRange(numbers);
+                values = zeros.Select((i, v) => new { v, i }).Select(t => t.i.Value).ToList();
+            }
+
+            for (int k = 0; k < m_board.GetLength(0); k++)
+                m_board[k, i].SetTile(m_boardTilePresets[values[k]]);
+        }
+    }
+
+    public void Combine(bool row, int direction) 
+    {
+        if (row)
+            CombineRows(direction);
+        else
+            CombineCols(direction);
+    }
+    private void CombineCols(int direction) 
+    {
+        bool combined = false;
+        int k = 0;
+        for (; k < m_board.GetLength(1); k++)
+        {
+            if (direction > 0)
+            {
+                for (int i = 0; i < m_board.GetLength(1); i++)
+                {
+                    if (i + 1 >= m_board.GetLength(1))
+                        break;
+
+                    if (m_board[i, k].Value == 0) continue;
+
+                    if (m_board[i, k].Value == m_board[i + 1,k].Value)
+                    {
+                        int sum = m_board[i, k].Value + m_board[i+1,k].Value;
+                        m_board[i, k].SetTile(m_boardTilePresets[sum]);
+                        m_board[i + 1,k].SetTile(m_boardTilePresets[(int)ETileValues.INVALID]);
+                        combined = true;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = m_board.GetLength(1) - 1; i >= 0; i--)
+                {
+                    if (i - 1 < 0)
+                        break;
+
+                    if (m_board[i, k].Value == 0) continue;
+
+                    if (m_board[i, k].Value == m_board[i - 1,k].Value)
+                    {
+                        int sum = m_board[i,k].Value + m_board[i - 1,k].Value;
+                        m_board[i,k].SetTile(m_boardTilePresets[sum]);
+                        m_board[i - 1,k].SetTile(m_boardTilePresets[(int)ETileValues.INVALID]);
+                        combined = true;
+                    }
+                }
+            }
+        }
+
+        if (combined) SpawnTile();
+    }
+    private void CombineRows(int direction) 
+    {
+        bool combined = false;
+        int k = 0;
+        for (; k < m_board.GetLength(0); k++)
+        { 
+            if ( direction > 0)
+            {
+                for (int i = 0; i < m_board.GetLength(0); i++)
+                {
+                    if (i + 1 >= m_board.GetLength(0))
+                        break;
+                    
+                    if (m_board[k, i].Value == 0) continue;
+
+                    if (m_board[k, i].Value == m_board[k, i + 1].Value)
+                    {
+                        int sum = m_board[k, i].Value + m_board[k, i + 1].Value;
+                        m_board[k, i].SetTile(m_boardTilePresets[sum]);
+                        m_board[k, i + 1].SetTile(m_boardTilePresets[(int)ETileValues.INVALID]);
+                        combined = true;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = m_board.GetLength(0) -1; i >= 0; i--)
+                {
+                    if (i - 1 < 0)
+                        break;
+
+                    if (m_board[k, i].Value == 0) continue;
+
+                    if (m_board[k,i].Value == m_board[k,i-1].Value)
+                    {
+                        int sum = m_board[k, i].Value + m_board[k, i - 1].Value;
+                        m_board[k, i].SetTile(m_boardTilePresets[sum]);
+                        m_board[k, i-1].SetTile(m_boardTilePresets[(int)ETileValues.INVALID]);
+                        combined = true;
+                    }
+                }
+            }
+        }
+        if (combined) SpawnTile();
+    }
+
+    public void SpawnTile() 
+    {
+        //random spawn
+        List<BoardTile> candidates = new List<BoardTile>();
+        for (int i = 0; i < m_board.GetLength(0); i++)
+            candidates.AddRange(CustomBoardArray<BoardTile>.GetRow(m_board, i).Where(x => x.Value == 0).ToList());
+
+        int sort = Random.Range(0, candidates.Count);
+        candidates[sort].SetTile(m_boardTilePresets[(int)ETileValues.NUMBER2]);
+    }
+
+    public void DrawBoard()
+    {
+        m_boardBack = GameObject.Instantiate(m_boardPreset.boardBackgroundObj);
+        var boardObject = m_boardBack.transform.GetChild(0);
+        RectTransform b = boardObject.GetComponent<RectTransform>();
+
+        var min = b.sizeDelta / 2.0f;
+        
+        for (int r = 0; r < m_boardPreset.width; r++)
+        {
+            for (int c = 0; c < m_boardPreset.height; c++)
+            {
+                var tile = GameObject.Instantiate(m_boardPreset.boardTileObj, boardObject.transform);
+                
+                var bt = tile.GetComponent<BoardTile>();
+                bt.SetTile(m_boardTilePresets[(int)ETileValues.INVALID]);
+                
+                var size = bt.GetSizeX();
+                
+                tile.transform.localPosition = new Vector3(min.x - size/2.0f - c * size, min.y - size/2.0f -  r * size, 1);
+                tile.transform.localScale = Vector3.one;
+
+                m_board[r, c] = bt;
+            }
+        }
+
+        m_board[0, 0].SetTile(m_boardTilePresets[(int)ETileValues.NUMBER2]);
+        m_board[0, 1].SetTile(m_boardTilePresets[(int)ETileValues.NUMBER2]);
+        SpawnTile();
+        m_machine.OnChangeState(new BoardGamePlayState(this.m_machine, (bool row, int direction) => { Slide(row, direction); Combine(row,direction); Slide(row,direction); }));
+    }
+}
